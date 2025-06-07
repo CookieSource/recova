@@ -15,6 +15,7 @@ private slots:
     void selectPartition() {
         targetRoot = partitionList->currentItem() ? partitionList->currentItem()->text() : QString();
         if(targetRoot.isEmpty()) return;
+        chrootLabel->setText("Chroot: " + targetRoot);
         stacked->setCurrentWidget(actionPage);
     }
     void runAction() {
@@ -42,6 +43,8 @@ private slots:
         if (args.size() < 2) return; // nothing to run
 
         terminal->clear();
+        QString cmd = program + " " + args.join(" ");
+        terminal->append("Running: " + cmd);
         process->setProcessChannelMode(QProcess::MergedChannels);
         process->start(program, args);
     }
@@ -63,6 +66,12 @@ private:
         layout->addWidget(new QLabel("Choose partition to chroot into:"));
         layout->addWidget(partitionList);
         layout->addWidget(selectBtn);
+        partitionTerminal = new QTextEdit();
+        partitionTerminal->setReadOnly(true);
+        QFont f("monospace");
+        f.setStyleHint(QFont::TypeWriter);
+        partitionTerminal->setFont(f);
+        layout->addWidget(partitionTerminal);
         connect(selectBtn, &QPushButton::clicked, this, &RecoveryWindow::selectPartition);
         stacked->addWidget(partitionPage);
         populatePartitions();
@@ -74,6 +83,7 @@ private:
         actionList->addItems({"Update system", "Reinstall grub", "Install LTS kernel", "Add new administrator"});
         QWidget *right = new QWidget();
         QVBoxLayout *rightLayout = new QVBoxLayout(right);
+        chrootLabel = new QLabel("Chroot: N/A");
         QHBoxLayout *buttons = new QHBoxLayout();
         QPushButton *runBtn = new QPushButton("Run");
         QPushButton *cancelBtn = new QPushButton("Cancel");
@@ -84,6 +94,7 @@ private:
         QFont f("monospace");
         f.setStyleHint(QFont::TypeWriter);
         terminal->setFont(f);
+        rightLayout->addWidget(chrootLabel);
         rightLayout->addLayout(buttons);
         rightLayout->addWidget(terminal);
         layout->addWidget(actionList);
@@ -97,9 +108,12 @@ private:
     }
     void populatePartitions() {
         QProcess lsblk;
-        lsblk.start("lsblk -ln -o NAME");
+        lsblk.setProcessChannelMode(QProcess::MergedChannels);
+        partitionTerminal->append("Running: lsblk -ln -o NAME");
+        lsblk.start("lsblk", {"-ln", "-o", "NAME"});
         lsblk.waitForFinished();
-        const QString output = lsblk.readAllStandardOutput();
+        const QString output = QString::fromLocal8Bit(lsblk.readAll());
+        partitionTerminal->append(output);
         for(const QString &line : output.split('\n')) {
             if(line.isEmpty()) continue;
             new QListWidgetItem("/dev/" + line.trimmed(), partitionList);
@@ -111,6 +125,8 @@ private:
     QListWidget *partitionList;
     QListWidget *actionList;
     QTextEdit *terminal;
+    QTextEdit *partitionTerminal;
+    QLabel *chrootLabel;
     QString targetRoot;
     QProcess *process;
 };
