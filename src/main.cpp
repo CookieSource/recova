@@ -13,8 +13,9 @@ public:
     }
 private slots:
     void selectPartition() {
-        targetRoot = partitionList->currentItem() ? partitionList->currentItem()->text() : QString();
-        if(targetRoot.isEmpty()) return;
+        if (!partitionList->currentItem()) return;
+        targetRoot = partitionList->currentItem()->data(Qt::UserRole).toString();
+        if (targetRoot.isEmpty()) return;
         stacked->setCurrentWidget(actionPage);
     }
     void runAction() {
@@ -60,8 +61,14 @@ private:
         QVBoxLayout *layout = new QVBoxLayout(partitionPage);
         partitionList = new QListWidget();
         QPushButton *selectBtn = new QPushButton("Select");
-        layout->addWidget(new QLabel("Choose partition to chroot into:"));
+        partitionTerminal = new QTextEdit();
+        partitionTerminal->setReadOnly(true);
+        QFont f("monospace");
+        f.setStyleHint(QFont::TypeWriter);
+        partitionTerminal->setFont(f);
+        layout->addWidget(new QLabel("Available chroot targets:"));
         layout->addWidget(partitionList);
+        layout->addWidget(partitionTerminal);
         layout->addWidget(selectBtn);
         connect(selectBtn, &QPushButton::clicked, this, &RecoveryWindow::selectPartition);
         stacked->addWidget(partitionPage);
@@ -96,14 +103,46 @@ private:
         stacked->addWidget(actionPage);
     }
     void populatePartitions() {
+        partitionList->clear();
+        if (partitionTerminal)
+            partitionTerminal->clear();
+
         QProcess lsblk;
-        lsblk.start("lsblk -ln -o NAME");
+        lsblk.start("lsblk -ln -o NAME,MOUNTPOINT");
         lsblk.waitForFinished();
-        const QString output = lsblk.readAllStandardOutput();
-        for(const QString &line : output.split('\n')) {
-            if(line.isEmpty()) continue;
-            new QListWidgetItem("/dev/" + line.trimmed(), partitionList);
+        const QString output = QString::fromLocal8Bit(lsblk.readAllStandardOutput());
+        for (const QString &line : output.split('\n')) {
+            if (line.trimmed().isEmpty())
+                continue;
+            QStringList fields = line.simplified().split(' ');
+            if (fields.size() < 2)
+                continue;
+            QString name = fields.at(0);
+            QString mount = fields.at(1);
+            if (mount.isEmpty())
+                continue;
+            if (partitionTerminal)
+                partitionTerminal->append(QString("Testing %1 mounted at %2...").arg(name, mount));
+
+            QProcess test;
+            test.setProcessChannelMode(QProcess::MergedChannels);
+            test.start("arch-chroot", QStringList{mount, "/bin/true"});
+            test.waitForFinished();
+            if (partitionTerminal)
+                partitionTerminal->append(QString::fromLocal8Bit(test.readAll()));
+            if (test.exitStatus() == QProcess::NormalExit && test.exitCode() == 0) {
+                if (partitionTerminal)
+                    partitionTerminal->append("OK\n");
+                QListWidgetItem *it = new QListWidgetItem(QString("%1 (%2)").arg(name, mount), partitionList);
+                it->setData(Qt::UserRole, mount);
+            } else {
+                if (partitionTerminal)
+                    partitionTerminal->append("FAILED\n");
+            }
+            qApp->processEvents();
         }
+        if (partitionList->count() == 0 && partitionTerminal)
+            partitionTerminal->append("No valid chroot targets found.");
     }
     QStackedWidget *stacked;
     QWidget *partitionPage;
@@ -111,6 +150,7 @@ private:
     QListWidget *partitionList;
     QListWidget *actionList;
     QTextEdit *terminal;
+    QTextEdit *partitionTerminal;
     QString targetRoot;
     QProcess *process;
 };
