@@ -38,6 +38,16 @@ private slots:
             QString user = QInputDialog::getText(this, "Add User", "Username", QLineEdit::Normal, "", &ok);
             if (!ok || user.isEmpty()) return;
             args << "bash" << "-c" << QString("useradd -m -G wheel %1 && passwd %1").arg(user);
+        } else if (action == "Install NVIDIA DKMS drivers") {
+            args << "pacman" << "-S" << "nvidia-dkms";
+        } else if (action == "Blacklist NVIDIA drivers") {
+            args << "bash" << "-c" << "echo 'blacklist nvidia' > /etc/modprobe.d/blacklist-nvidia.conf";
+        } else if (action == "Install AMD GPU drivers") {
+            args << "pacman" << "-S" << "xf86-video-amdgpu";
+        } else if (action == "Blacklist AMD GPU drivers") {
+            args << "bash" << "-c" << "echo 'blacklist amdgpu' > /etc/modprobe.d/blacklist-amdgpu.conf";
+        } else if (action == "Install NVIDIA open source drivers") {
+            args << "pacman" << "-S" << "nvidia-open-dkms";
         }
 
         if (args.size() < 2) return; // nothing to run
@@ -78,7 +88,16 @@ private:
         actionPage = new QWidget();
         QHBoxLayout *layout = new QHBoxLayout(actionPage);
         actionList = new QListWidget();
-        actionList->addItems({"Update system", "Reinstall grub", "Install LTS kernel", "Add new administrator"});
+        actionList->addItems({
+            "Update system",
+            "Reinstall grub",
+            "Install LTS kernel",
+            "Add new administrator",
+            "Install NVIDIA DKMS drivers",
+            "Blacklist NVIDIA drivers",
+            "Install AMD GPU drivers",
+            "Blacklist AMD GPU drivers",
+            "Install NVIDIA open source drivers"});
         QWidget *right = new QWidget();
         QVBoxLayout *rightLayout = new QVBoxLayout(right);
         QHBoxLayout *buttons = new QHBoxLayout();
