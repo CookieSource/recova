@@ -138,8 +138,26 @@ private:
                 continue;
             QString name = fields.at(0);
             QString mount = fields.at(1);
-            if (mount.isEmpty())
-                continue;
+            QString tempMount;
+            if (mount.isEmpty()) {
+                tempMount = QString("/mnt/recova-%1").arg(name);
+                QDir().mkpath(tempMount);
+                if (partitionTerminal)
+                    partitionTerminal->append(QString("Mounting /dev/%1 to %2...").arg(name, tempMount));
+                QProcess mnt;
+                mnt.setProcessChannelMode(QProcess::MergedChannels);
+                mnt.start("mount", QStringList{QString("/dev/%1").arg(name), tempMount});
+                mnt.waitForFinished();
+                if (partitionTerminal)
+                    partitionTerminal->append(QString::fromLocal8Bit(mnt.readAll()));
+                if (mnt.exitStatus() != QProcess::NormalExit || mnt.exitCode() != 0) {
+                    if (partitionTerminal)
+                        partitionTerminal->append("Failed to mount\n");
+                    QDir(tempMount).rmdir(".");
+                    continue;
+                }
+                mount = tempMount;
+            }
             if (partitionTerminal)
                 partitionTerminal->append(QString("Testing %1 mounted at %2...").arg(name, mount));
 
@@ -157,6 +175,12 @@ private:
             } else {
                 if (partitionTerminal)
                     partitionTerminal->append("FAILED\n");
+            }
+            if (!tempMount.isEmpty()) {
+                QProcess umnt;
+                umnt.start("umount", QStringList{tempMount});
+                umnt.waitForFinished();
+                QDir(tempMount).rmdir(".");
             }
             qApp->processEvents();
         }
